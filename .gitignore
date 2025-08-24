@@ -1,5 +1,10 @@
 # Node modules
 couple-compass/frontend/node_modules/
 couple-compass/bff/node_modules/
-
-couple-compass\frontend\.next
+couple-compass/frontend/.next/
+couple-compass/backend/app/__pycache__/
+couple-compass/backend/app/routers/__pycache__/
+couple-compass/backend/app/models/__pycache__/
+couple-compass/backend/app/schemas/__pycache__/
+couple-compass/backend/app/utils/__pycache__/
+couple-compass/backend/app/services/__pycache__/
