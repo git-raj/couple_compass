@@ -8,7 +8,7 @@ from ..database import get_db
 from ..models.mood import MoodCheckin
 from ..models.user import User
 from ..schemas.mood import MoodCheckinCreate, MoodCheckinResponse, MoodStats
-from ..routers.auth import get_current_user
+from ..routers.auth import get_current_user_dependency as get_current_user
 
 router = APIRouter(prefix="/mood", tags=["mood"])
 
@@ -16,14 +16,17 @@ router = APIRouter(prefix="/mood", tags=["mood"])
 async def create_mood_checkin(
     mood_data: MoodCheckinCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """Create a new mood check-in for the current user"""
+    # Handle current_user as dict
+    user_id = current_user.get("id") if isinstance(current_user, dict) else current_user.id
+    
     # Check if user already has a mood entry for today
     today = datetime.now().date()
     existing_mood = db.query(MoodCheckin).filter(
         and_(
-            MoodCheckin.user_id == current_user.id,
+            MoodCheckin.user_id == user_id,
             func.date(MoodCheckin.created_at) == today
         )
     ).first()
@@ -39,9 +42,10 @@ async def create_mood_checkin(
         return existing_mood
     else:
         # Create new mood entry
+        couple_id = current_user.get("couple_id") if isinstance(current_user, dict) else getattr(current_user, 'couple_id', None)
         db_mood = MoodCheckin(
-            user_id=current_user.id,
-            couple_id=getattr(current_user, 'couple_id', None),
+            user_id=user_id,
+            couple_id=couple_id,
             mood_level=mood_data.mood_level,
             notes=mood_data.notes,
             context_tags=mood_data.context_tags
@@ -54,13 +58,16 @@ async def create_mood_checkin(
 @router.get("/today", response_model=Optional[MoodCheckinResponse])
 async def get_today_mood(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """Get today's mood check-in for the current user"""
+    # Handle current_user as dict
+    user_id = current_user.get("id") if isinstance(current_user, dict) else current_user.id
+    
     today = datetime.now().date()
     mood = db.query(MoodCheckin).filter(
         and_(
-            MoodCheckin.user_id == current_user.id,
+            MoodCheckin.user_id == user_id,
             func.date(MoodCheckin.created_at) == today
         )
     ).first()
@@ -70,13 +77,16 @@ async def get_today_mood(
 async def get_mood_history(
     days: Optional[int] = 30,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """Get mood history for the current user"""
+    # Handle current_user as dict
+    user_id = current_user.get("id") if isinstance(current_user, dict) else current_user.id
+    
     start_date = datetime.now() - timedelta(days=days)
     moods = db.query(MoodCheckin).filter(
         and_(
-            MoodCheckin.user_id == current_user.id,
+            MoodCheckin.user_id == user_id,
             MoodCheckin.created_at >= start_date
         )
     ).order_by(desc(MoodCheckin.created_at)).all()
@@ -86,13 +96,16 @@ async def get_mood_history(
 async def get_mood_stats(
     days: Optional[int] = 30,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """Get mood statistics for the current user"""
+    # Handle current_user as dict
+    user_id = current_user.get("id") if isinstance(current_user, dict) else current_user.id
+    
     start_date = datetime.now() - timedelta(days=days)
     moods = db.query(MoodCheckin).filter(
         and_(
-            MoodCheckin.user_id == current_user.id,
+            MoodCheckin.user_id == user_id,
             MoodCheckin.created_at >= start_date
         )
     ).all()
@@ -137,15 +150,95 @@ async def get_mood_stats(
         recent_trend=recent_trend
     )
 
+@router.get("/streak")
+async def get_mood_streak(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get current mood streak for the current user"""
+    # Handle current_user as dict
+    user_id = current_user.get("id") if isinstance(current_user, dict) else current_user.id
+    
+    # Get all mood check-ins for this user ordered by date (most recent first)
+    moods = db.query(MoodCheckin).filter(
+        MoodCheckin.user_id == user_id
+    ).order_by(desc(func.date(MoodCheckin.created_at))).all()
+    
+    if not moods:
+        return {"current_streak": 0, "longest_streak": 0, "last_checkin": None}
+    
+    # Calculate current streak
+    current_streak = 0
+    today = datetime.now().date()
+    
+    # Group moods by date (in case there are multiple entries per day, we only count the day once)
+    mood_dates = set()
+    for mood in moods:
+        mood_date = mood.created_at.date() if hasattr(mood.created_at, 'date') else mood.created_at
+        mood_dates.add(mood_date)
+    
+    # Sort dates in descending order
+    sorted_dates = sorted(mood_dates, reverse=True)
+    
+    # Check for current streak starting from today or yesterday
+    check_date = today
+    if sorted_dates and sorted_dates[0] == today:
+        current_streak = 1
+        check_date = today - timedelta(days=1)
+    elif sorted_dates and sorted_dates[0] == today - timedelta(days=1):
+        current_streak = 1
+        check_date = today - timedelta(days=2)
+    
+    # Continue counting consecutive days
+    for date in sorted_dates[1:] if current_streak > 0 else sorted_dates:
+        if current_streak == 0 and date == today - timedelta(days=1):
+            current_streak = 1
+            check_date = today - timedelta(days=2)
+            continue
+        elif current_streak == 0:
+            break
+            
+        if date == check_date:
+            current_streak += 1
+            check_date -= timedelta(days=1)
+        else:
+            break
+    
+    # Calculate longest streak
+    longest_streak = 0
+    temp_streak = 0
+    prev_date = None
+    
+    for date in sorted(sorted_dates):
+        if prev_date is None:
+            temp_streak = 1
+        elif date == prev_date + timedelta(days=1):
+            temp_streak += 1
+        else:
+            longest_streak = max(longest_streak, temp_streak)
+            temp_streak = 1
+        prev_date = date
+    
+    longest_streak = max(longest_streak, temp_streak)
+    
+    return {
+        "current_streak": current_streak,
+        "longest_streak": longest_streak,
+        "last_checkin": sorted_dates[0].isoformat() if sorted_dates else None
+    }
+
 @router.delete("/{mood_id}")
 async def delete_mood_checkin(
     mood_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """Delete a mood check-in"""
+    # Handle current_user as dict
+    user_id = current_user.get("id") if isinstance(current_user, dict) else current_user.id
+    
     mood = db.query(MoodCheckin).filter(
-        and_(MoodCheckin.id == mood_id, MoodCheckin.user_id == current_user.id)
+        and_(MoodCheckin.id == mood_id, MoodCheckin.user_id == user_id)
     ).first()
     
     if not mood:

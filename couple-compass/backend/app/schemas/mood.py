@@ -17,8 +17,8 @@ class MoodCheckinCreate(BaseModel):
 
 class MoodCheckinResponse(BaseModel):
     id: int
-    user_id: str
-    couple_id: Optional[str]
+    user_id: int  # Changed from str to int to match the database model
+    couple_id: Optional[int]  # Changed from Optional[str] to Optional[int] to match the database model
     mood_level: int
     notes: Optional[str]
     context_tags: Optional[Dict[str, Any]]

@@ -1,4 +1,4 @@
-import pinecone
+from pinecone import Pinecone, ServerlessSpec
 from typing import List, Dict, Any, Optional
 import uuid
 import json
@@ -14,30 +14,35 @@ class VectorService:
         self.index_name = "couple-compass-conversations"
         self.dimension = 1536  # OpenAI text-embedding-3-small dimension
         self.ai_service = AIService()
+        self.pc = None
+        self.index = None
         self._initialize_pinecone()
     
     def _initialize_pinecone(self):
         """Initialize Pinecone connection"""
         try:
-            # Initialize Pinecone
-            pinecone.init(
-                api_key=settings.pinecone_api_key,
-                environment=settings.pinecone_environment
-            )
+            # Initialize Pinecone with modern API
+            self.pc = Pinecone(api_key=settings.pinecone_api_key)
             
             # Create index if it doesn't exist
-            if self.index_name not in pinecone.list_indexes():
-                pinecone.create_index(
+            existing_indexes = self.pc.list_indexes().names()
+            if self.index_name not in existing_indexes:
+                self.pc.create_index(
                     name=self.index_name,
                     dimension=self.dimension,
-                    metric="cosine"
+                    metric="cosine",
+                    spec=ServerlessSpec(
+                        cloud="aws",
+                        region="us-east-1"
+                    )
                 )
             
-            self.index = pinecone.Index(self.index_name)
+            self.index = self.pc.Index(self.index_name)
             logger.info(f"Connected to Pinecone index: {self.index_name}")
             
         except Exception as e:
             logger.error(f"Failed to initialize Pinecone: {str(e)}")
+            self.pc = None
             self.index = None
     
     async def store_conversation_context(

@@ -36,18 +36,13 @@ export default function LoginPage() {
       // Store the access token and user data
       localStorage.setItem('access_token', data.access_token)
       localStorage.setItem('user', JSON.stringify({
-        id: data.id,
-        name: data.name,
-        email: data.email,
-        onboarding_completed: data.onboarding_completed
+        id: data.user.id,
+        name: data.user.name,
+        email: data.user.email
       }))
 
-      // Redirect based on onboarding status
-      if (data.onboarding_completed) {
-        window.location.href = '/dashboard'
-      } else {
-        window.location.href = '/profile-setup'
-      }
+      // Always redirect to dashboard after successful login
+      window.location.href = '/dashboard'
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {

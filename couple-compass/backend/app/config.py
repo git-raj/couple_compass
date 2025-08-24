@@ -1,6 +1,13 @@
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
+from pathlib import Path
+
+# Load environment variables from root .env file
+root_env_path = Path(__file__).parent.parent.parent.parent / ".env"
+if root_env_path.exists():
+    from dotenv import load_dotenv
+    load_dotenv(root_env_path)
 
 class Settings(BaseSettings):
     # Database
@@ -17,16 +24,23 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     redis_password: Optional[str] = None
     
-    # External APIs
-    openai_api_key: str = ""
+    # LLM Provider Configuration
+    default_llm_provider: str = os.getenv("DEFAULT_LLM_PROVIDER", "openai")
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+    openai_embeddings_model: str = os.getenv("OPENAI_EMBEDDINGS_MODEL", "text-embedding-3-small")
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-pro")
+    
+    # AWS Configuration
     aws_access_key_id: Optional[str] = None
     aws_secret_access_key: Optional[str] = None
     aws_region: str = "us-east-1"
     s3_bucket: str = "couple-compass-media"
     
     # Vector Database (Pinecone)
-    pinecone_api_key: str = ""
-    pinecone_environment: str = "us-east-1-aws"
+    pinecone_api_key: str = os.getenv("PINECONE_API_KEY", "")
+    pinecone_environment: str = os.getenv("PINECONE_ENVIRONMENT", "us-east-1-aws")
     
     # Email
     smtp_host: Optional[str] = None

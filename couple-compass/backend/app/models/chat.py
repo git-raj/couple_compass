@@ -16,8 +16,8 @@ class ChatSession(BaseModel):
     last_activity = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     # Relationships
-    user = relationship("User", foreign_keys=[user_id], back_populates="chat_sessions")
-    partner = relationship("User", foreign_keys=[partner_user_id])
+    user = relationship("User", foreign_keys=[user_id])
+    partner = relationship("User", foreign_keys=[partner_user_id], post_update=True)
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
     contexts = relationship("ConversationContext", back_populates="session", cascade="all, delete-orphan")
 
@@ -38,8 +38,7 @@ class ChatMessage(BaseModel):
     # Relationships
     session = relationship("ChatSession", back_populates="messages")
     user = relationship("User")
-    parent_message = relationship("ChatMessage", remote_side="ChatMessage.id")
-    replies = relationship("ChatMessage", remote_side="ChatMessage.parent_message_id")
+    parent_message = relationship("ChatMessage", remote_side="ChatMessage.id", backref="replies")
 
 class ConversationContext(BaseModel):
     __tablename__ = "conversation_contexts"
@@ -55,6 +54,3 @@ class ConversationContext(BaseModel):
     # Relationships
     session = relationship("ChatSession", back_populates="contexts")
     source_message = relationship("ChatMessage")
-
-# Update User model to include chat relationships
-User.chat_sessions = relationship("ChatSession", foreign_keys="ChatSession.user_id", back_populates="user")

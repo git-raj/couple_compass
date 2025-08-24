@@ -13,7 +13,6 @@ import {
   ArrowRightOnRectangleIcon
 } from '@heroicons/react/24/outline'
 import { Button } from '@/components/ui/button'
-import MoodTracker from '@/components/dashboard/MoodTracker'
 
 interface User {
   id: number
@@ -71,6 +70,46 @@ export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [moodStreak, setMoodStreak] = useState<{current_streak: number, longest_streak: number} | null>(null)
+
+  // Get API base URL
+  const getApiUrl = () => {
+    if (typeof window !== 'undefined') {
+      return window.location.hostname === 'localhost' 
+        ? 'http://localhost:8000/api/v1' 
+        : 'https://api.couplecompass.com/api/v1';
+    }
+    return 'http://localhost:8000/api/v1';
+  };
+
+  // Get auth token
+  const getAuthToken = () => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('access_token');
+    }
+    return null;
+  };
+
+  const fetchMoodStreak = async () => {
+    try {
+      const token = getAuthToken();
+      if (!token) return;
+
+      const response = await fetch(`${getApiUrl()}/mood/streak`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const streak = await response.json();
+        setMoodStreak(streak);
+      }
+    } catch (error) {
+      console.error('Error fetching mood streak:', error);
+    }
+  };
 
   useEffect(() => {
     // Check authentication
@@ -92,6 +131,9 @@ export default function DashboardPage() {
         return
       }
     }
+
+    // Fetch mood streak data
+    fetchMoodStreak()
 
     setLoading(false)
   }, [router])
@@ -170,17 +212,13 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Mood Tracker - Full Width */}
-        <div className="mb-8">
-          <MoodTracker />
-        </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <StatsCard
             title="Mood Streak"
-            value="7 days"
-            subtitle="Keep it going!"
+            value={moodStreak ? `${moodStreak.current_streak} day${moodStreak.current_streak !== 1 ? 's' : ''}` : '0 days'}
+            subtitle={moodStreak && moodStreak.current_streak > 0 ? 'Keep it going!' : 'Start tracking today!'}
             icon={HeartIcon}
             color="text-pink-600"
           />

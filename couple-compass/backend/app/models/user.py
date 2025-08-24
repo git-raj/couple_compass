@@ -21,5 +21,8 @@ class User(BaseModel):
     partner_name = Column(String(255))
     anniversary_date = Column(String(10))  # YYYY-MM-DD format
     onboarding_completed = Column(Boolean, default=False)
-
-# Note: Removing unused models for now to focus on authentication
+    
+    # Relationships
+    mood_checkins = relationship("MoodCheckin", back_populates="user")
+    journals = relationship("Journal", back_populates="user")
+    # chat_sessions = relationship("ChatSession", back_populates="user")  # Uncomment when ChatSession model is ready

@@ -8,3 +8,4 @@ couple-compass/backend/app/models/__pycache__/
 couple-compass/backend/app/schemas/__pycache__/
 couple-compass/backend/app/utils/__pycache__/
 couple-compass/backend/app/services/__pycache__/
+.env

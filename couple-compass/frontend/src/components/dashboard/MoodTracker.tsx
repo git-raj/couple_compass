@@ -193,6 +193,11 @@ export default function MoodTracker() {
         await fetchMoodStats();
         // Show success feedback
         alert(todayMood ? 'Mood updated successfully!' : 'Mood saved successfully!');
+        
+        // Trigger a refresh of the parent component if it exists
+        if (typeof window !== 'undefined' && window.parent !== window) {
+          window.parent.postMessage({ type: 'mood_updated' }, '*');
+        }
       } else {
         const error = await response.text();
         console.error('Error response:', error);
@@ -221,6 +226,29 @@ export default function MoodTracker() {
     });
   };
 
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) {
+      const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+      return diffInMinutes <= 1 ? 'Just now' : `${diffInMinutes} minutes ago`;
+    } else if (diffInHours < 24) {
+      return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
+    } else {
+      return date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    }
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex items-center justify-between mb-6">
@@ -234,6 +262,49 @@ export default function MoodTracker() {
           </div>
         )}
       </div>
+
+      {/* Last Mood Update Display */}
+      {todayMood && (
+        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+          <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center">
+            <span className="mr-2">📝</span>
+            Last Mood Update
+          </h3>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="text-3xl">
+                {moodEmojis[todayMood.mood_level as keyof typeof moodEmojis]?.emoji}
+              </div>
+              <div>
+                <div className="font-medium text-gray-800">
+                  {moodEmojis[todayMood.mood_level as keyof typeof moodEmojis]?.label}
+                </div>
+                <div className="text-sm text-gray-600">
+                  {formatDateTime(todayMood.updated_at)}
+                </div>
+                {todayMood.context_tags && Object.keys(todayMood.context_tags).length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {Object.keys(todayMood.context_tags).filter(tag => todayMood.context_tags![tag]).map(tag => {
+                      const tagInfo = contextTags.find(t => t.id === tag);
+                      return (
+                        <span key={tag} className={`px-2 py-0.5 rounded-full text-xs ${tagInfo?.color || 'bg-gray-200 text-gray-700'}`}>
+                          {tagInfo?.label || tag}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+            {todayMood.notes && (
+              <div className="text-sm text-gray-600 max-w-xs">
+                <div className="font-medium mb-1">Notes:</div>
+                <div className="italic">"{todayMood.notes}"</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Mood Selection */}
       <div className="mb-6">

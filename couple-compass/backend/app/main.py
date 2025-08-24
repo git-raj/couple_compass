@@ -48,6 +48,14 @@ async def health_check():
         "version": "1.0.0"
     }
 
+@app.get("/api/v1/health")
+async def api_health_check():
+    return {
+        "status": "healthy",
+        "timestamp": time.time(),
+        "version": "1.0.0"
+    }
+
 @app.get("/ready")
 async def readiness_check():
     # Add database connection check

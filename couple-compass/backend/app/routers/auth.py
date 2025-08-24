@@ -14,6 +14,32 @@ import hashlib
 router = APIRouter(prefix="/auth", tags=["authentication"])
 security = HTTPBearer()
 
+def get_current_user_dependency(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Dependency function to get current user from token"""
+    
+    # Verify token
+    payload = verify_token(credentials.credentials)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    # Get user from database
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email
+    }
+
 def validate_email(email: str) -> bool:
     """Validate email format"""
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
@@ -85,36 +111,17 @@ async def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         "user": {
             "id": user.id,
             "name": user.name,
-            "email": user.email
+            "email": user.email,
+            "onboarding_completed": True  # Existing users logging in should always be considered onboarded
         }
     }
 
 @router.get("/me", response_model=dict)
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
+async def get_current_user_info(
+    current_user: dict = Depends(get_current_user_dependency)
 ):
     """Get current user info"""
-    
-    # Verify token
-    payload = verify_token(credentials.credentials)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-    # Get user from database
-    user = db.query(User).filter(User.id == int(user_id)).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    return {
-        "id": user.id,
-        "name": user.name,
-        "email": user.email
-    }
+    return current_user
 
 @router.post("/refresh")
 async def refresh_token(
