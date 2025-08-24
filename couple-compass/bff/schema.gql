@@ -1,0 +1,53 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type AuthPayload {
+  access_token: String!
+  token_type: String!
+  user: User!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+type Mutation {
+  login(input: LoginInput!): AuthPayload!
+  refreshToken(refreshToken: String!): AuthPayload!
+  signup(input: SignupInput!): AuthPayload!
+}
+
+type Query {
+  me: User!
+}
+
+input SignupInput {
+  email: String!
+  name: String!
+  password: String!
+}
+
+type User {
+  anniversary_date: String
+  auth_provider: String
+  birthdate: String
+  created_at: DateTime!
+  email: String!
+  id: ID!
+  is_active: Boolean!
+  is_verified: Boolean!
+  name: String!
+  onboarding_completed: Boolean!
+  partner_name: String
+  pronouns: String
+  relationship_status: String
+  timezone: String!
+  updated_at: DateTime
+}

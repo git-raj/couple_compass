@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=your-secret-key-change-in-production
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_GRAPHQL_URL=http://localhost:4000/graphql
+      - NEXT_PUBLIC_SOCKET_URL=http://localhost:4000
+    volumes:
+      # Optional: Mount for environment variables (remove for production)
+      - ./.env.local:/app/.env.local:ro
+    restart: unless-stopped
+    networks:
+      - couple-compass-network
+
+networks:
+  couple-compass-network:
+    driver: bridge

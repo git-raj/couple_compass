@@ -1,0 +1,32 @@
+# Development Dockerfile for Frontend
+FROM node:18-alpine
+
+# Install dependencies for better development experience
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies including devDependencies
+RUN npm install
+
+# Copy app source
+COPY . .
+
+# Create next.js cache directory with proper permissions
+RUN mkdir -p .next && chown -R node:node .next
+
+# Switch to non-root user
+USER node
+
+# Expose port
+EXPOSE 3000
+
+# Set environment variables for development
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Start the development server
+CMD ["npm", "run", "dev"]

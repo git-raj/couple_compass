@@ -1,0 +1,25 @@
+from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Integer, func
+from sqlalchemy.orm import relationship
+from .base import BaseModel
+
+class User(BaseModel):
+    __tablename__ = "users"
+    
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255))
+    is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=False)
+    auth_provider = Column(String(50), default="email")  # email, google, apple
+    provider_id = Column(String(255))
+    
+    # Profile fields
+    pronouns = Column(String(50))
+    birthdate = Column(String(10))  # YYYY-MM-DD format
+    timezone = Column(String(50), default="UTC")
+    relationship_status = Column(String(50))
+    partner_name = Column(String(255))
+    anniversary_date = Column(String(10))  # YYYY-MM-DD format
+    onboarding_completed = Column(Boolean, default=False)
+
+# Note: Removing unused models for now to focus on authentication

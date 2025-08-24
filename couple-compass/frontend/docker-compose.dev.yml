@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  frontend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_TELEMETRY_DISABLED=1
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=dev-secret-key
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_GRAPHQL_URL=http://localhost:4000/graphql
+      - NEXT_PUBLIC_SOCKET_URL=http://localhost:4000
+      - WATCHPACK_POLLING=true
+    volumes:
+      # Mount source code for hot reload
+      - ./src:/app/src
+      - ./pages:/app/pages
+      - ./public:/app/public
+      - ./styles:/app/styles
+      - ./.env.local:/app/.env.local:ro
+      - ./package.json:/app/package.json:ro
+      - ./next.config.js:/app/next.config.js:ro
+      - ./tailwind.config.js:/app/tailwind.config.js:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./postcss.config.js:/app/postcss.config.js:ro
+      # Exclude node_modules to prevent conflicts
+      - /app/node_modules
+      - /app/.next
+    restart: unless-stopped
+    networks:
+      - couple-compass-dev
+
+networks:
+  couple-compass-dev:
+    driver: bridge

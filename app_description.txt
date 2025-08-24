@@ -1,0 +1,205 @@
+Awesome — here’s a crisp, buildable **MVP architecture** you can hand to an engineer today. I’ll keep it practical, with tech choices, core data model, API sketch, and how the AI/tips engine plugs in.
+
+# 🎯 Goals for MVP
+
+* **Private-use** couples app with: signup + partner-linking, 2 gamified quizzes, daily mood check-ins, optional journal/voice note, shared dashboard, basic AI tips.
+* **Low friction** to build and iterate. Cloud-native, cheap to run, extensible.
+
+---
+
+# 🧱 High-Level Architecture (Logical)
+
+**Clients**
+
+* **Mobile app (preferred)**: React Native (Expo)
+* **Web (optional MVP)**: Next.js (only if you want a web companion)
+
+**Backend**
+
+* **API Layer**: FastAPI (Python) or NestJS (TypeScript)
+* **Auth**: JWT access tokens + refresh; Magic links or email+password; optional OAuth (Apple/Google) later
+* **DB**: Postgres (RDS/Neon/Supabase). Use Prisma or SQLModel/SQLAlchemy for speed.
+* **Object Storage**: S3 (journals audio, avatars)
+* **Queue/Jobs**: Redis + RQ/BullMQ for async AI processing & analytics
+* **AI/Tips Engine**: Stateless service calling LLM (OpenAI) + rules engine + vector store (SQLite/PGVector)
+* **Analytics/Events**: Segment or RudderStack → BigQuery/Snowflake later
+
+**Infra**
+
+* **Hosting**: Fly.io/Render/Supabase (fast MVP) or AWS Fargate + RDS
+* **Secrets**: Doppler/1Password/AWS Secrets Manager
+* **CI/CD**: GitHub Actions
+* **Observability**: Sentry (client+server), OpenTelemetry traces, PostHog for product analytics
+
+---
+
+# 🗂️ Core Data Model (ERD-lite)
+
+```
+User(id, email, password_hash?, auth_provider, created_at)
+Profile(user_id PK/FK, name, avatar_url, pronouns, birthdate, timezone)
+Couple(id, created_at)
+CoupleMember(couple_id FK, user_id FK, role)           -- role: 'partnerA'/'partnerB'
+PartnerLink(code, created_by_user_id, couple_id?, status, expires_at)
+
+Quiz(id, slug, title, type, is_active)
+QuizItem(id, quiz_id FK, prompt, kind, options_json)
+QuizResult(id, user_id FK, quiz_id FK, score_json, created_at)
+
+MoodCheckin(id, user_id FK, couple_id FK, mood:int(1..5), note, created_at)
+Journal(id, user_id FK, couple_id FK, text, created_at, visibility)  -- 'private'|'shared'
+VoiceNote(id, user_id FK, s3_url, transcript, created_at, visibility)
+
+CycleLog(id, user_id FK, day_date, phase, notes)       -- optional in MVP
+
+Tip(id, title, body, tags[])                           -- rule-based library
+UserTip(id, user_id FK, tip_id FK, context_json, created_at, seen:boolean)
+
+Badge(id, name, criteria_json)
+UserBadge(user_id FK, badge_id FK, earned_at)
+
+EventLog(id, user_id?, couple_id?, event_type, payload_json, created_at)
+```
+
+Notes:
+
+* Keep **journals/voice** flagged `visibility` to enforce privacy on the server.
+* Add **PGVector** extension later for semantic search over transcripts.
+
+---
+
+# 🔌 API Sketch (REST-first; GraphQL later if needed)
+
+**Auth**
+
+* `POST /auth/signup` → { email, password? } → magic link or OTP optional
+* `POST /auth/login` → JWT { access\_token, refresh\_token }
+* `POST /auth/refresh`
+
+**Couple Linking**
+
+* `POST /couple/link-code` → returns `{ code }`
+* `POST /couple/link-accept` → { code } → pairs users → returns `{ couple_id }`
+* `GET /couple/me` → linked partner profiles + shared metrics
+
+**Profile & Quizzes**
+
+* `GET /profile/me` / `PUT /profile/me`
+* `GET /quizzes?active=true`
+* `POST /quiz-results` → { quiz\_id, answers\[] } → returns computed `score_json` + tip suggestions
+
+**Check-ins & Journals**
+
+* `POST /mood-checkins` → { mood, note? }
+* `POST /journals` → { text, visibility }
+* `POST /voice-notes` → signed URL flow: `POST /uploads/sign`, then PUT to S3, then `POST /voice-notes/confirm { url }`
+
+**Dashboard**
+
+* `GET /dashboard/couple` → last 14–30d trends (mood avg, streaks, gratitude count)
+* `GET /tips/recommended` → top N current tips
+
+---
+
+# 🧠 AI & Tips Engine (MVP)
+
+**Inputs**
+
+* Quiz results (love language, comm style)
+* Mood check-ins + notes
+* Journals/voice transcripts (if provided)
+* Optional cycle phase (for tailored suggestions)
+
+**Processing**
+
+1. **LLM Lite Summaries (async job):**
+
+   * Summarize journals into themes: “feels unheard,” “work stress,” “need for space”
+   * Extract simple sentiment score (–1..+1)
+2. **Rules Engine (deterministic, transparent):**
+
+   * If mismatch: `PartnerA=Words`, `PartnerB=QualityTime` → tip set X
+   * If mood dips Sun/Mon → suggest reset ritual
+   * If `pursue–withdraw` pattern (from quiz) → “10-min pause rule” tip
+3. **Tip Ranking:**
+
+   * Heuristic = recency penalty + diversity bonus + sentiment need boost
+   * Return 2–3 bite-sized tips max (don’t overwhelm)
+
+**Outputs**
+
+* `UserTip` upserts + `/tips/recommended` API
+* Dashboard badges when thresholds hit (e.g., 7-day streak)
+
+**Safety & Privacy**
+
+* Local, per-user queues; redact PII before LLM calls
+* Never show partner’s private journal to the other partner
+
+---
+
+# 🔐 Security & Privacy (non-negotiables, MVP-friendly)
+
+* **Row-level authorization**: every query scoped by `user_id` & `couple_id`
+* **At-rest encryption**: Postgres disk (cloud default) + S3 SSE
+* **In-transit**: HTTPS only
+* **Secrets**: environment store (Doppler/Secrets Manager)
+* **LLM data handling**: strip emails/names; short retention; no training on user data
+* **Export/Delete**: endpoints for data export & right-to-be-forgotten
+
+---
+
+# 📈 Analytics & Experiments
+
+* **EventLog** for server-side truth (quiz\_completed, checkin\_created, tip\_viewed)
+* Client analytics (PostHog) for funnels & retention
+* **Feature flags** to ship new quizzes/challenges safely
+
+---
+
+# 🧪 Testing Strategy
+
+* **Unit**: rules engine, tip ranking, quiz scoring
+* **Contract tests**: mobile ↔ API
+* **Load smoke**: check spikes in journaling evenings
+* **Privacy tests**: ensure no cross-partner data leakage
+
+---
+
+# 🛣️ Build Order
+
+
+* Auth + profiles + partner linking
+* Mood check-in + journal CRUD
+* Two quizzes + scoring
+* Shared dashboard (14-day view)
+* Tips library + rules engine v1
+* Basic LLM summaries (journals → themes)
+* Voice notes upload + transcription (Whisper API)
+* Badges/streaks
+* Cycle log (basic)
+* Polish UX (empty states, streak visuals)
+* Sentry, metrics, rate limiting
+* App store prep (if mobile)
+
+---
+
+# 🎨 Mobile UI Slices (for dev handoff)
+
+* **Onboarding flow**: email → avatar → 6-Q mini quiz → link screen
+* **Home**: “Check in” button, today’s tip, partner gratitude prompt
+* **Quizzes**: card-per-question, progress bar, confetti badge on finish
+* **Journal**: text field, mic button, privacy toggle
+* **Dashboard**: mood sparkline, streak chip, last 3 tips
+* **Settings**: notifications, data export/delete, partner link status
+
+---
+
+# 🌱 Extensibility Hooks (Future)
+
+* Plug-in **new quizzes** via CMS table (`Quiz`, `QuizItem`)
+* **Vector search** over transcripts (PGVector) for smarter insights
+* **Mediator Mode**: synchronous session with prompt script
+* **Therapist Export**: PDF monthly relationship snapshot (opt-in)
+
+---

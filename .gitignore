@@ -1,0 +1,5 @@
+# Node modules
+couple-compass/frontend/node_modules/
+couple-compass/bff/node_modules/
+
+couple-compass\frontend\.next
