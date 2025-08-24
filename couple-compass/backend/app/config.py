@@ -4,10 +4,15 @@ import os
 from pathlib import Path
 
 # Load environment variables from root .env file
-root_env_path = Path(__file__).parent.parent.parent.parent / ".env"
-if root_env_path.exists():
+root_env_path = Path(__file__).parent.parent.parent / ".env"
+try:
     from dotenv import load_dotenv
     load_dotenv(root_env_path)
+    print(f"Loaded environment variables from: {root_env_path}")
+except ImportError:
+    print("python-dotenv not installed, using system environment variables")
+except Exception as e:
+    print(f"Error loading .env file: {e}")
 
 class Settings(BaseSettings):
     # Database

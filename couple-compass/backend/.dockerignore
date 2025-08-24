@@ -1,0 +1,11 @@
+# Exclude development-related files
+.env
+.venv
+*.pyc
+__pycache__/
+.git/
+.gitignore
+.dockerignore
+
+# Exclude data
+couple_compass.db

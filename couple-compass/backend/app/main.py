@@ -7,7 +7,7 @@ import time
 from .config import get_settings
 from .database import engine
 from .models.base import Base
-from .routers import auth, users, chat, mood
+from .routers import auth, users, chat, mood, quiz, partner, tips
 
 settings = get_settings()
 
@@ -39,6 +39,9 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(mood.router, prefix="/api/v1")
+app.include_router(quiz.router, prefix="/api/v1")
+app.include_router(partner.router, prefix="/api/v1")
+app.include_router(tips.router, prefix="/api/v1")
 
 @app.get("/health")
 async def health_check():

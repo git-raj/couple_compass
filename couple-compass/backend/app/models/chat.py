@@ -54,3 +54,19 @@ class ConversationContext(BaseModel):
     # Relationships
     session = relationship("ChatSession", back_populates="contexts")
     source_message = relationship("ChatMessage")
+
+class ChatInvitation(BaseModel):
+    __tablename__ = "chat_invitations"
+    
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=False)
+    inviter_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    invitee_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String(20), default="pending")  # pending, accepted, declined, expired
+    invitation_message = Column(Text, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    responded_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    session = relationship("ChatSession")
+    inviter = relationship("User", foreign_keys=[inviter_id])
+    invitee = relationship("User", foreign_keys=[invitee_id])

@@ -59,15 +59,14 @@ export default function MoodTracker() {
   const [moodStats, setMoodStats] = useState<MoodStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyOffset, setHistoryOffset] = useState(0);
+  const [totalMoodCount, setTotalMoodCount] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreMoods, setHasMoreMoods] = useState(true);
 
-  // Get API base URL
+  // Get API base URL - use consistent approach with other components
   const getApiUrl = () => {
-    if (typeof window !== 'undefined') {
-      return window.location.hostname === 'localhost' 
-        ? 'http://localhost:8000/api/v1' 
-        : 'https://api.couplecompass.com/api/v1';
-    }
-    return 'http://localhost:8000/api/v1';
+    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
   };
 
   // Get auth token
@@ -111,12 +110,12 @@ export default function MoodTracker() {
     }
   };
 
-  const fetchMoodHistory = async () => {
+  const fetchMoodHistory = async (offset = 0, append = false) => {
     try {
       const token = getAuthToken();
       if (!token) return;
 
-      const response = await fetch(`${getApiUrl()}/mood/history?days=7`, {
+      const response = await fetch(`${getApiUrl()}/mood/history?days=30&limit=5&offset=${offset}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -124,12 +123,28 @@ export default function MoodTracker() {
       });
 
       if (response.ok) {
-        const history = await response.json();
-        setMoodHistory(history);
+        const data = await response.json();
+        if (append) {
+          setMoodHistory(prev => [...prev, ...data.moods]);
+        } else {
+          setMoodHistory(data.moods);
+        }
+        setTotalMoodCount(data.total_count);
+        setHasMoreMoods(data.moods.length === 5 && (offset + 5) < data.total_count);
       }
     } catch (error) {
       console.error('Error fetching mood history:', error);
     }
+  };
+
+  const loadMoreMoods = async () => {
+    if (loadingMore || !hasMoreMoods) return;
+    
+    setLoadingMore(true);
+    const newOffset = historyOffset + 5;
+    await fetchMoodHistory(newOffset, true);
+    setHistoryOffset(newOffset);
+    setLoadingMore(false);
   };
 
   const fetchMoodStats = async () => {
@@ -213,7 +228,13 @@ export default function MoodTracker() {
 
   const toggleHistory = () => {
     if (!showHistory) {
-      fetchMoodHistory();
+      setHistoryOffset(0);
+      fetchMoodHistory(0, false);
+    } else {
+      // Reset pagination state when hiding
+      setMoodHistory([]);
+      setHistoryOffset(0);
+      setHasMoreMoods(true);
     }
     setShowHistory(!showHistory);
   };
@@ -414,7 +435,15 @@ export default function MoodTracker() {
       {/* Mood History */}
       {showHistory && (
         <div className="mt-4 border-t pt-4">
-          <h4 className="font-semibold text-gray-700 mb-3">Last 7 Days</h4>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-semibold text-gray-700">Recent Mood History</h4>
+            {totalMoodCount > 0 && (
+              <span className="text-sm text-gray-500">
+                Showing {moodHistory.length} of {totalMoodCount} entries
+              </span>
+            )}
+          </div>
+          
           {moodHistory.length > 0 ? (
             <div className="space-y-3">
               {moodHistory.map((mood) => (
@@ -451,6 +480,37 @@ export default function MoodTracker() {
                   )}
                 </div>
               ))}
+              
+              {/* Load More Button */}
+              {hasMoreMoods && (
+                <div className="text-center pt-3">
+                  <Button
+                    onClick={loadMoreMoods}
+                    disabled={loadingMore}
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                  >
+                    {loadingMore ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                        <span>Loading...</span>
+                      </div>
+                    ) : (
+                      `Show More (${Math.min(5, totalMoodCount - moodHistory.length)} more)`
+                    )}
+                  </Button>
+                </div>
+              )}
+              
+              {/* All loaded message */}
+              {!hasMoreMoods && moodHistory.length > 5 && (
+                <div className="text-center pt-3">
+                  <p className="text-sm text-gray-500">
+                    All mood entries loaded
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-gray-500 text-center py-4">

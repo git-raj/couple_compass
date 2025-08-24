@@ -8,7 +8,7 @@ from ..schemas.chat import (
     AIResponse, ChatSessionResponse, ChatMessageResponse
 )
 from .ai_service import AIService
-from .vector_service import VectorService
+# from .vector_service import VectorService
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 class ChatService:
     def __init__(self):
         self.ai_service = AIService()
-        self.vector_service = VectorService()
+        # self.vector_service = VectorService()
+        self.vector_service = None  # Temporarily disabled
     
     async def create_chat_session(
         self, 
@@ -49,6 +50,38 @@ class ChatService:
             db.rollback()
             raise
     
+    def _should_ai_respond(self, message: str) -> bool:
+        """Determine if AI should respond to the given message"""
+        message_lower = message.lower()
+        
+        # Check for direct AI mentions
+        if 'ai' in message_lower or 'advisor' in message_lower:
+            return True
+        
+        # Check for help-seeking keywords
+        if any(keyword in message_lower for keyword in ['help', 'advice', 'suggest']):
+            return True
+        
+        # Check for request phrases
+        request_phrases = ['what should', 'how do', 'can you', 'please']
+        if any(phrase in message_lower for phrase in request_phrases):
+            return True
+        
+        # Check for questions (contains question mark) but exclude casual partner chat
+        if '?' in message:
+            # Exclude common casual questions between partners
+            casual_questions = [
+                'how was your day', 'how are you', 'what are you doing',
+                'where are you', 'when are you', 'are you okay', 'you okay',
+                'how was work', 'how did it go', 'did you eat', 'are you home'
+            ]
+            
+            is_casual_question = any(casual in message_lower for casual in casual_questions)
+            if not is_casual_question:
+                return True
+        
+        return False
+
     async def send_message(
         self,
         db: Session,
@@ -56,7 +89,7 @@ class ChatService:
         user_id: int,
         message_data: ChatMessageSend
     ) -> Dict[str, Any]:
-        """Send a message and get AI response"""
+        """Send a message and conditionally get AI response"""
         try:
             # Verify session exists and user has access
             session = db.query(ChatSession).filter(
@@ -87,78 +120,89 @@ class ChatService:
             db.commit()
             db.refresh(user_message)
             
-            # Store message in vector database for context
-            await self.vector_service.store_conversation_context(
-                session_id=session_id,
-                content=message_data.content,
-                content_type="user_message",
-                user_id=user_id,
-                metadata={
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "message_id": user_message.id
-                }
-            )
-            
-            # Get conversation history for context
-            conversation_history = await self._get_conversation_history(db, session_id, limit=10)
-            
-            # Search for relevant context using RAG
-            relevant_context = await self.vector_service.search_relevant_context(
-                query=message_data.content,
-                session_id=session_id,
-                limit=5
-            )
-            
-            # Generate AI response with context
-            ai_response = await self.ai_service.generate_mediation_response(
-                message=message_data.content,
-                conversation_history=conversation_history,
-                user_context={
-                    "relevant_context": relevant_context,
-                    "session_type": session.session_type,
-                    "topic": session.topic
-                }
-            )
-            
-            # Store AI response
-            ai_message = ChatMessage(
-                session_id=session_id,
-                user_id=None,  # AI message
-                role="ai",
-                content=ai_response.message,
-                message_type="text",
-                parent_message_id=user_message.id,
-                tokens_used=ai_response.tokens_used,
-                metadata=ai_response.metadata
-            )
-            
-            db.add(ai_message)
+            # Store message in vector database for context (temporarily disabled)
+            # await self.vector_service.store_conversation_context(
+            #     session_id=session_id,
+            #     content=message_data.content,
+            #     content_type="user_message",
+            #     user_id=user_id,
+            #     metadata={
+            #         "timestamp": datetime.now(timezone.utc).isoformat(),
+            #         "message_id": user_message.id
+            #     }
+            # )
             
             # Update session activity
             session.last_activity = datetime.now(timezone.utc)
-            
             db.commit()
-            db.refresh(ai_message)
             
-            # Store AI response in vector database
-            await self.vector_service.store_conversation_context(
-                session_id=session_id,
-                content=ai_response.message,
-                content_type="ai_response",
-                user_id=None,
-                metadata={
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "message_id": ai_message.id,
-                    "tokens_used": ai_response.tokens_used
+            # Check if AI should respond
+            if self._should_ai_respond(message_data.content):
+                # Get conversation history for context
+                conversation_history = await self._get_conversation_history(db, session_id, limit=10)
+                
+                # Search for relevant context using RAG (temporarily disabled)
+                # relevant_context = await self.vector_service.search_relevant_context(
+                #     query=message_data.content,
+                #     session_id=session_id,
+                #     limit=5
+                # )
+                relevant_context = []  # Temporarily disabled
+                
+                # Generate AI response with context
+                ai_response = await self.ai_service.generate_mediation_response(
+                    message=message_data.content,
+                    conversation_history=conversation_history,
+                    user_context={
+                        "relevant_context": relevant_context,
+                        "session_type": session.session_type,
+                        "topic": session.topic
+                    }
+                )
+                
+                # Store AI response
+                ai_message = ChatMessage(
+                    session_id=session_id,
+                    user_id=None,  # AI message
+                    role="ai",
+                    content=ai_response.message,
+                    message_type="text",
+                    parent_message_id=user_message.id,
+                    tokens_used=ai_response.tokens_used,
+                    metadata=ai_response.metadata
+                )
+                
+                db.add(ai_message)
+                db.commit()
+                db.refresh(ai_message)
+                
+                # Store AI response in vector database (temporarily disabled)
+                # await self.vector_service.store_conversation_context(
+                #     session_id=session_id,
+                #     content=ai_response.message,
+                #     content_type="ai_response",
+                #     user_id=None,
+                #     metadata={
+                #         "timestamp": datetime.now(timezone.utc).isoformat(),
+                #         "message_id": ai_message.id,
+                #         "tokens_used": ai_response.tokens_used
+                #     }
+                # )
+                
+                return {
+                    "user_message": ChatMessageResponse.from_orm(user_message),
+                    "ai_response": ChatMessageResponse.from_orm(ai_message),
+                    "suggested_actions": ai_response.suggested_actions,
+                    "confidence_score": ai_response.confidence_score
                 }
-            )
-            
-            return {
-                "user_message": ChatMessageResponse.from_orm(user_message),
-                "ai_response": ChatMessageResponse.from_orm(ai_message),
-                "suggested_actions": ai_response.suggested_actions,
-                "confidence_score": ai_response.confidence_score
-            }
+            else:
+                # Return only user message, no AI response
+                return {
+                    "user_message": ChatMessageResponse.from_orm(user_message),
+                    "ai_response": None,
+                    "suggested_actions": [],
+                    "confidence_score": None
+                }
             
         except Exception as e:
             logger.error(f"Error sending message: {str(e)}")
@@ -236,8 +280,8 @@ class ChatService:
             if not session:
                 raise ValueError("Chat session not found or access denied")
             
-            # Delete vector data
-            await self.vector_service.delete_session_context(session_id)
+            # Delete vector data (temporarily disabled)
+            # await self.vector_service.delete_session_context(session_id)
             
             # Delete from database (cascade will handle messages and contexts)
             db.delete(session)
@@ -361,14 +405,14 @@ class ChatService:
                 ChatMessage.role == "ai"
             ).count()
             
-            # Vector database stats
-            vector_stats = self.vector_service.get_stats()
+            # Vector database stats (temporarily disabled)
+            # vector_stats = self.vector_service.get_stats()
             
             return {
                 "total_sessions": total_sessions,
                 "total_messages": total_messages,
                 "total_ai_responses": total_ai_responses,
-                "vector_database": vector_stats
+                "vector_database": {"status": "disabled"}
             }
             
         except Exception as e:

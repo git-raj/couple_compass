@@ -189,6 +189,75 @@ class GeminiProvider(LLMProvider):
             # Fallback to a zero vector of standard size if embeddings fail
             return [0.0] * 768  # Standard embedding dimension for text-embedding-ada-002
 
+class MockProvider(LLMProvider):
+    """Mock provider for testing"""
+    
+    def __init__(self):
+        pass
+    
+    async def generate_completion(
+        self, 
+        messages: List[Dict[str, str]], 
+        max_tokens: int = 1500,
+        temperature: float = 0.7
+    ) -> Dict[str, Any]:
+        """Generate a mock completion"""
+        
+        # Get the last user message for context
+        user_message = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                user_message = msg.get("content", "").lower()
+                break
+        
+        # Generate contextual responses based on keywords
+        if "help" in user_message or "advice" in user_message or "ai" in user_message:
+            response = "I understand you're looking for guidance. As your relationship advisor, I'm here to help you navigate challenges and improve communication with your partner. What specific situation would you like to discuss?"
+        elif "conflict" in user_message or "fight" in user_message or "argue" in user_message:
+            response = "Conflicts in relationships are natural, but how we handle them makes all the difference. Let's work together to find healthy ways to address this issue. Can you tell me more about what's happening?"
+        elif "communication" in user_message:
+            response = "Communication is the foundation of every strong relationship. I'd love to help you improve how you and your partner connect. What communication challenges are you experiencing?"
+        elif "?" in user_message:
+            response = "That's a great question. Let me help you think through this situation. Remember, every relationship is unique, and what works for others might need to be adapted for your specific circumstances."
+        else:
+            response = "Thank you for sharing that with me. Relationships require ongoing effort and understanding from both partners. I'm here to support you both in building a stronger connection. What would you like to explore together?"
+        
+        # Simulate token usage
+        estimated_tokens = len(response.split()) * 1.3
+        
+        return {
+            "message": response,
+            "tokens_used": int(estimated_tokens),
+            "provider": "mock",
+            "model": "mock-counselor-v1"
+        }
+    
+    async def moderate_content(self, content: str) -> Dict[str, Any]:
+        """Mock content moderation"""
+        # Simple keyword-based flagging
+        flagged_words = ["abuse", "violence", "harm", "kill", "die"]
+        content_lower = content.lower()
+        
+        flagged = any(word in content_lower for word in flagged_words)
+        
+        return {
+            "flagged": flagged,
+            "categories": {"harassment": flagged, "violence": flagged},
+            "category_scores": {"harassment": 0.9 if flagged else 0.1, "violence": 0.9 if flagged else 0.1},
+            "provider": "mock"
+        }
+    
+    async def get_embeddings(self, text: str) -> List[float]:
+        """Generate mock embeddings"""
+        # Simple hash-based mock embeddings
+        import hashlib
+        hash_value = int(hashlib.md5(text.encode()).hexdigest(), 16)
+        # Generate 768-dimensional vector (common embedding size)
+        embeddings = []
+        for i in range(768):
+            embeddings.append(((hash_value + i) % 1000) / 1000.0 - 0.5)
+        return embeddings
+
 class AIService:
     """Multi-provider AI service with unified interface"""
     
@@ -214,6 +283,8 @@ class AIService:
                 api_key=settings.gemini_api_key,
                 model=settings.gemini_model
             )
+        elif self.provider_name.lower() == "mock":
+            return MockProvider()
         else:
             raise ValueError(f"Unsupported provider: {self.provider_name}")
     

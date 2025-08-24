@@ -8,11 +8,14 @@ import logging
 
 from ..database import get_db
 from ..models.user import User
-from ..models.chat import ChatSession, ChatMessage
+from ..models.chat import ChatSession, ChatMessage, ChatInvitation
 from ..schemas.chat import (
     ChatSessionCreate, ChatSessionResponse, ChatSessionWithMessages,
     ChatMessageSend, ChatMessageResponse, ChatContextRequest, 
-    ConversationContextResponse, WSMessage, WSTypingIndicator
+    ConversationContextResponse, WSMessage, WSTypingIndicator,
+    ChatInvitationCreate, ChatInvitationResponse, ChatInvitationAccept,
+    ChatInvitationDecline, PartnerStatus, SessionParticipants,
+    WSInvitationEvent, WSPartnerEvent
 )
 from ..services.chat_service import ChatService
 from ..utils.security import verify_token
@@ -310,6 +313,294 @@ async def get_chat_stats(
     except Exception as e:
         logger.error(f"Error getting chat stats: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get chat statistics")
+
+# Partner invitation endpoints
+@router.post("/sessions/{session_id}/invite-partner", response_model=ChatInvitationResponse)
+async def invite_partner_to_session(
+    session_id: int,
+    invitation_data: ChatInvitationCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Send invitation to partner to join chat session"""
+    try:
+        # Check if user has a partner
+        if not current_user.partner_id:
+            raise HTTPException(status_code=400, detail="You don't have a linked partner")
+        
+        # Check if session exists and belongs to user
+        session = db.query(ChatSession).filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id
+        ).first()
+        
+        if not session:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+        
+        # Check if partner is already in the session
+        if session.partner_user_id == current_user.partner_id:
+            raise HTTPException(status_code=400, detail="Partner is already in this session")
+        
+        # Check for existing pending invitation
+        existing_invitation = db.query(ChatInvitation).filter(
+            ChatInvitation.session_id == session_id,
+            ChatInvitation.inviter_id == current_user.id,
+            ChatInvitation.invitee_id == current_user.partner_id,
+            ChatInvitation.status == "pending"
+        ).first()
+        
+        if existing_invitation:
+            raise HTTPException(status_code=400, detail="Partner invitation already pending")
+        
+        # Create invitation
+        from datetime import datetime, timedelta
+        invitation = ChatInvitation(
+            session_id=session_id,
+            inviter_id=current_user.id,
+            invitee_id=current_user.partner_id,
+            invitation_message=invitation_data.invitation_message,
+            expires_at=datetime.utcnow() + timedelta(hours=24)
+        )
+        
+        db.add(invitation)
+        db.commit()
+        db.refresh(invitation)
+        
+        # Send WebSocket notification to partner
+        ws_event = WSInvitationEvent(
+            invitation_id=invitation.id,
+            session_id=session_id,
+            inviter_id=current_user.id,
+            invitee_id=current_user.partner_id,
+            status="pending",
+            message=f"{current_user.name} invited you to join a chat session"
+        )
+        
+        await manager.send_personal_message(
+            message=ws_event.json(),
+            user_id=current_user.partner_id
+        )
+        
+        return ChatInvitationResponse(
+            id=invitation.id,
+            session_id=invitation.session_id,
+            inviter_id=invitation.inviter_id,
+            invitee_id=invitation.invitee_id,
+            status=invitation.status,
+            invitation_message=invitation.invitation_message,
+            expires_at=invitation.expires_at,
+            responded_at=invitation.responded_at,
+            created_at=invitation.created_at,
+            updated_at=invitation.updated_at
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error inviting partner: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to invite partner")
+
+@router.get("/invitations", response_model=List[ChatInvitationResponse])
+async def get_chat_invitations(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get pending chat invitations for current user"""
+    try:
+        invitations = db.query(ChatInvitation).filter(
+            ChatInvitation.invitee_id == current_user.id,
+            ChatInvitation.status == "pending"
+        ).all()
+        
+        return [ChatInvitationResponse(
+            id=inv.id,
+            session_id=inv.session_id,
+            inviter_id=inv.inviter_id,
+            invitee_id=inv.invitee_id,
+            status=inv.status,
+            invitation_message=inv.invitation_message,
+            expires_at=inv.expires_at,
+            responded_at=inv.responded_at,
+            created_at=inv.created_at,
+            updated_at=inv.updated_at
+        ) for inv in invitations]
+    
+    except Exception as e:
+        logger.error(f"Error getting invitations: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get invitations")
+
+@router.post("/invitations/{invitation_id}/accept")
+async def accept_chat_invitation(
+    invitation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Accept a chat invitation"""
+    try:
+        # Get invitation
+        invitation = db.query(ChatInvitation).filter(
+            ChatInvitation.id == invitation_id,
+            ChatInvitation.invitee_id == current_user.id,
+            ChatInvitation.status == "pending"
+        ).first()
+        
+        if not invitation:
+            raise HTTPException(status_code=404, detail="Invitation not found")
+        
+        # Check if invitation expired
+        from datetime import datetime
+        if invitation.expires_at and datetime.utcnow() > invitation.expires_at:
+            invitation.status = "expired"
+            db.commit()
+            raise HTTPException(status_code=400, detail="Invitation has expired")
+        
+        # Update session to include partner
+        session = db.query(ChatSession).filter(ChatSession.id == invitation.session_id).first()
+        if session:
+            session.partner_user_id = current_user.id
+            session.session_type = "couple_chat"
+        
+        # Update invitation status
+        invitation.status = "accepted"
+        invitation.responded_at = datetime.utcnow()
+        
+        db.commit()
+        
+        # Send WebSocket notification to both users
+        partner_event = WSPartnerEvent(
+            type="partner_joined",
+            session_id=invitation.session_id,
+            partner_id=current_user.id,
+            partner_name=current_user.name,
+            message=f"{current_user.name} joined the chat session"
+        )
+        
+        # Notify inviter
+        await manager.send_personal_message(
+            message=partner_event.json(),
+            user_id=invitation.inviter_id
+        )
+        
+        # Broadcast to session
+        await manager.broadcast_to_session(
+            message=partner_event.json(),
+            session_id=invitation.session_id
+        )
+        
+        return {"message": "Invitation accepted successfully", "session_id": invitation.session_id}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error accepting invitation: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to accept invitation")
+
+@router.post("/invitations/{invitation_id}/decline")
+async def decline_chat_invitation(
+    invitation_id: int,
+    decline_data: ChatInvitationDecline,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Decline a chat invitation"""
+    try:
+        # Get invitation
+        invitation = db.query(ChatInvitation).filter(
+            ChatInvitation.id == invitation_id,
+            ChatInvitation.invitee_id == current_user.id,
+            ChatInvitation.status == "pending"
+        ).first()
+        
+        if not invitation:
+            raise HTTPException(status_code=404, detail="Invitation not found")
+        
+        # Update invitation status
+        from datetime import datetime
+        invitation.status = "declined"
+        invitation.responded_at = datetime.utcnow()
+        
+        db.commit()
+        
+        # Send WebSocket notification to inviter
+        ws_event = WSInvitationEvent(
+            invitation_id=invitation.id,
+            session_id=invitation.session_id,
+            inviter_id=invitation.inviter_id,
+            invitee_id=current_user.id,
+            status="declined",
+            message=f"{current_user.name} declined your chat invitation"
+        )
+        
+        await manager.send_personal_message(
+            message=ws_event.json(),
+            user_id=invitation.inviter_id
+        )
+        
+        return {"message": "Invitation declined"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error declining invitation: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to decline invitation")
+
+@router.get("/sessions/{session_id}/participants", response_model=SessionParticipants)
+async def get_session_participants(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get participants in a chat session"""
+    try:
+        # Check if session exists and user has access
+        session = db.query(ChatSession).filter(
+            ChatSession.id == session_id
+        ).filter(
+            (ChatSession.user_id == current_user.id) | 
+            (ChatSession.partner_user_id == current_user.id)
+        ).first()
+        
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        participants = []
+        partner_status = None
+        
+        # Add session owner
+        participants.append({
+            "user_id": session.user_id,
+            "name": session.user.name,
+            "role": "owner",
+            "is_online": True  # Placeholder - implement real online tracking
+        })
+        
+        # Add partner if present
+        if session.partner_user_id and session.partner:
+            partner_info = {
+                "user_id": session.partner_user_id,
+                "name": session.partner.name,
+                "role": "partner",
+                "is_online": True  # Placeholder - implement real online tracking
+            }
+            participants.append(partner_info)
+            
+            partner_status = PartnerStatus(
+                user_id=session.partner_user_id,
+                is_online=True,  # Placeholder
+                is_in_session=True
+            )
+        
+        return SessionParticipants(
+            session_id=session_id,
+            participants=participants,
+            partner_status=partner_status
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting session participants: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get session participants")
 
 # WebSocket endpoint
 @router.websocket("/ws/{user_id}")

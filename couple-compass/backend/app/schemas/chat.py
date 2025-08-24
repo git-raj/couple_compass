@@ -42,6 +42,26 @@ class ChatMessageResponse(ChatMessageBase):
     
     class Config:
         from_attributes = True
+        
+    @classmethod
+    def from_orm(cls, obj):
+        # Handle SQLAlchemy metadata properly
+        data = {
+            'id': obj.id,
+            'session_id': obj.session_id,
+            'user_id': obj.user_id,
+            'role': obj.role,
+            'content': obj.content,
+            'message_type': obj.message_type,
+            'metadata': obj.message_metadata if hasattr(obj, 'message_metadata') else {},
+            'parent_message_id': obj.parent_message_id,
+            'created_at': obj.created_at,
+            'updated_at': obj.updated_at,
+            'is_edited': obj.is_edited,
+            'is_deleted': obj.is_deleted,
+            'tokens_used': obj.tokens_used
+        }
+        return cls(**data)
 
 class ChatSessionResponse(ChatSessionBase):
     id: int
@@ -53,6 +73,24 @@ class ChatSessionResponse(ChatSessionBase):
     
     class Config:
         from_attributes = True
+        
+    @classmethod
+    def from_orm(cls, obj):
+        # Handle SQLAlchemy metadata properly
+        data = {
+            'id': obj.id,
+            'title': obj.title,
+            'user_id': obj.user_id,
+            'partner_user_id': obj.partner_user_id,
+            'session_type': obj.session_type,
+            'status': obj.status,
+            'topic': obj.topic,
+            'metadata': obj.session_metadata if hasattr(obj, 'session_metadata') else {},
+            'last_activity': obj.last_activity,
+            'created_at': obj.created_at,
+            'updated_at': obj.updated_at
+        }
+        return cls(**data)
 
 class ChatSessionWithMessages(ChatSessionResponse):
     messages: List[ChatMessageResponse] = []
@@ -84,9 +122,49 @@ class ConversationContextResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# Chat Invitation schemas
+class ChatInvitationBase(BaseModel):
+    session_id: int
+    invitation_message: Optional[str] = None
+
+class ChatInvitationCreate(ChatInvitationBase):
+    pass
+
+class ChatInvitationResponse(ChatInvitationBase):
+    id: int
+    inviter_id: int
+    invitee_id: int
+    status: str
+    expires_at: Optional[datetime] = None
+    responded_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class ChatInvitationAccept(BaseModel):
+    invitation_id: int
+
+class ChatInvitationDecline(BaseModel):
+    invitation_id: int
+    reason: Optional[str] = None
+
+# Partner Status schemas
+class PartnerStatus(BaseModel):
+    user_id: int
+    is_online: bool
+    last_seen: Optional[datetime] = None
+    is_in_session: bool = False
+
+class SessionParticipants(BaseModel):
+    session_id: int
+    participants: List[Dict[str, Any]] = []
+    partner_status: Optional[PartnerStatus] = None
+
 # WebSocket schemas
 class WSMessage(BaseModel):
-    type: str  # message, typing, status
+    type: str  # message, typing, status, invitation, partner_joined, partner_left
     session_id: int
     content: Optional[str] = None
     user_id: Optional[int] = None
@@ -97,3 +175,19 @@ class WSTypingIndicator(BaseModel):
     session_id: int
     user_id: int
     is_typing: bool
+
+class WSInvitationEvent(BaseModel):
+    type: str = "invitation"
+    invitation_id: int
+    session_id: int
+    inviter_id: int
+    invitee_id: int
+    status: str
+    message: Optional[str] = None
+
+class WSPartnerEvent(BaseModel):
+    type: str  # partner_joined, partner_left, partner_online, partner_offline
+    session_id: int
+    partner_id: int
+    partner_name: str
+    message: Optional[str] = None

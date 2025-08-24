@@ -22,7 +22,17 @@ class User(BaseModel):
     anniversary_date = Column(String(10))  # YYYY-MM-DD format
     onboarding_completed = Column(Boolean, default=False)
     
+    # Partner linking fields
+    partner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    partner_code = Column(String(6), unique=True, nullable=True)
+    partner_code_expires_at = Column(DateTime, nullable=True)
+    partner_linked_at = Column(DateTime, nullable=True)
+    
     # Relationships
     mood_checkins = relationship("MoodCheckin", back_populates="user")
     journals = relationship("Journal", back_populates="user")
+    quiz_results = relationship("QuizResult", back_populates="user")
     # chat_sessions = relationship("ChatSession", back_populates="user")  # Uncomment when ChatSession model is ready
+    
+    # Partner relationship (self-referential)
+    partner = relationship("User", foreign_keys=[partner_id], remote_side="User.id")

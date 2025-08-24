@@ -1,39 +1,12 @@
-# Dependencies
+# Exclude unnecessary files
 node_modules
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Production build
 .next
-
-# Environment variables
-.env*
-
-# Testing
-coverage
-
-# Miscellaneous
+out
+.env.local
 .DS_Store
-*.tgz
-*.tar.gz
+npm-debug.log
+yarn-debug.log
+yarn-error.log
 
-# Debug
-debug.log
-
-# IDE and editor files
-.vscode
-.idea
-*.swp
-*.swo
-
-# OS generated files
-Thumbs.db
-
-# Git
-.git
-.gitignore
-
-# Documentation
-README.md
-*.md
+# Ignore all .env files
+*.env

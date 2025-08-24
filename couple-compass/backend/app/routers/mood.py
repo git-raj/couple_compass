@@ -73,24 +73,52 @@ async def get_today_mood(
     ).first()
     return mood
 
-@router.get("/history", response_model=List[MoodCheckinResponse])
+@router.get("/history")
 async def get_mood_history(
     days: Optional[int] = 30,
+    limit: Optional[int] = None,
+    offset: Optional[int] = 0,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get mood history for the current user"""
+    """Get mood history for the current user with optional pagination"""
     # Handle current_user as dict
     user_id = current_user.get("id") if isinstance(current_user, dict) else current_user.id
     
     start_date = datetime.now() - timedelta(days=days)
-    moods = db.query(MoodCheckin).filter(
+    base_query = db.query(MoodCheckin).filter(
         and_(
             MoodCheckin.user_id == user_id,
             MoodCheckin.created_at >= start_date
         )
-    ).order_by(desc(MoodCheckin.created_at)).all()
-    return moods
+    ).order_by(desc(MoodCheckin.created_at))
+    
+    # Get total count
+    total_count = base_query.count()
+    
+    # Apply pagination if limit is provided
+    if limit is not None:
+        moods = base_query.offset(offset).limit(limit).all()
+    else:
+        moods = base_query.all()
+    
+    return {
+        "moods": [
+            {
+                "id": mood.id,
+                "user_id": mood.user_id,
+                "couple_id": mood.couple_id,
+                "mood_level": mood.mood_level,
+                "notes": mood.notes,
+                "context_tags": mood.context_tags,
+                "created_at": mood.created_at,
+                "updated_at": mood.updated_at
+            } for mood in moods
+        ],
+        "total_count": total_count,
+        "offset": offset,
+        "limit": limit
+    }
 
 @router.get("/stats", response_model=MoodStats)
 async def get_mood_stats(

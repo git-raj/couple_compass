@@ -1,69 +1,52 @@
-# Couple Compass
+# Couple Compass - Dockerized
 
-A comprehensive relationship-focused application that helps couples strengthen their bond through personalized insights, mood tracking, and AI-powered recommendations.
+This project is containerized using Docker and orchestrated with Docker Compose.
 
-## Architecture Overview
+## Prerequisites
 
-Couple Compass follows a microservices architecture with:
-
-- **Frontend**: Next.js 14 with TypeScript, Tailwind CSS, Apollo Client
-- **BFF Layer**: NestJS with GraphQL, Redis caching, WebSocket support  
-- **Backend**: FastAPI with Python, SQLAlchemy, PostgreSQL
-- **Infrastructure**: Kubernetes deployment with auto-scaling, monitoring
-- **AI Integration**: OpenAI GPT-4 for insights, Whisper for voice transcription
-
-## Core Features
-
-- User authentication & partner linking system
-- Gamified quizzes (love language, communication style)
-- Daily mood check-ins with analytics
-- Private/shared journaling with voice notes
-- AI-powered personalized tips
-- Real-time dashboard with streak tracking
-- Optional menstrual cycle tracking
+- Docker Desktop installed and running
 
 ## Getting Started
 
-### Prerequisites
+1.  Clone the repository:
 
-- Docker & Docker Compose
-- Node.js 18+
-- Python 3.11+
-- PostgreSQL 15+
-- Redis 7+
+    ```bash
+    git clone <repository_url>
+    cd couple-compass
+    ```
 
-### Local Development
+2.  Create a `.env` file in the `couple-compass` directory by copying the contents of `.env.example` and filling in the required environment variables:
 
-1. Clone the repository
-2. Set up environment variables (see `.env.example` files)
-3. Start the development environment:
-   ```bash
-   docker-compose -f infrastructure/docker-compose.dev.yml up
-   ```
+    ```bash
+    cp .env.example .env
+    # Edit .env and fill in the values
+    nano .env
+    ```
 
-### Project Structure
+3.  Run the application using Docker Compose:
 
+    ```bash
+    docker-compose up
+    ```
+
+    This command will build the images and start the containers for the backend, frontend, and Redis.
+
+4.  Access the application in your browser at `http://localhost:3000`.
+
+## Development
+
+For development, you can use the `docker-compose.dev.yml` file. This file mounts the source code into the containers, allowing you to make changes and see them reflected in the running application without rebuilding the images.
+
+```bash
+docker-compose -f docker-compose.dev.yml up
 ```
-couple-compass/
-├── backend/          # FastAPI backend service
-├── bff/             # NestJS GraphQL BFF layer
-├── frontend/        # Next.js web application
-├── infrastructure/  # Docker, Kubernetes, CI/CD configs
-└── docs/           # Project documentation
-```
 
-## Development Workflow
+## Notes
 
-1. **Phase 1**: Foundation & Core Infrastructure
-2. **Phase 2**: Backend Services  
-3. **Phase 3**: Frontend Application
-4. **Phase 4**: AI & Advanced Features
-5. **Phase 5**: Deployment & Production
+-   The backend is exposed on port 8000.
+-   The frontend is exposed on port 3000.
+-   Redis is used for caching and session management.
 
 ## Contributing
 
-Please read our contributing guidelines and code of conduct before submitting pull requests.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+Feel free to contribute to this project by submitting pull requests.
